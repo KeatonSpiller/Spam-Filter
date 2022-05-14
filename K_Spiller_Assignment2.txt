@@ -1,0 +1,155 @@
+Keaton Spiller 
+
+CS 445 
+
+Winter 2022
+
+Assignment # 2 
+
+import pandas as pd
+import numpy as np
+import math
+
+index = [ 'word_freq_make',"word_freq_address","word_freq_all","word_freq_3d","word_freq_our","word_freq_over","word_freq_remove","word_freq_internet","word_freq_order",       
+"word_freq_mail","word_freq_receive","word_freq_will","word_freq_people","word_freq_report","word_freq_addresses","word_freq_free","word_freq_business","word_freq_email",       
+"word_freq_you","word_freq_credit","word_freq_your","word_freq_font","word_freq_000","word_freq_money","word_freq_hp","word_freq_hpl","word_freq_george","word_freq_650",         
+"word_freq_lab","word_freq_labs","word_freq_telnet","word_freq_857","word_freq_data","word_freq_415","word_freq_85","word_freq_technology","word_freq_1999","word_freq_parts",       
+"word_freq_pm","word_freq_direct","word_freq_cs","word_freq_meeting","word_freq_original","word_freq_project","word_freq_re","word_freq_edu","word_freq_table","word_freq_conference",  
+"char_freq_;","char_freq_(","char_freq_[","char_freq_!","char_freq_$","char_freq_#","capital_run_length_average","capital_run_length_longest","capital_run_length_total","True_spam" ]
+
+df = pd.read_csv("spambase.data", sep=",",names=index)
+seed = np.random.permutation(len(df)) # If we want the same permutation or "seed" of the data rows grabbed in different orders
+df = df.iloc[seed]
+df.reset_index(drop=True, inplace=True)
+print(df.shape)
+df
+
+true_train_class = df.iloc[:2300,-1:].to_numpy() # Seperate out the True class labels {Spam and Not_Spam}
+true_test_class = df.iloc[2300:,-1:].to_numpy()
+
+df_train = df.iloc[:2300,:-1] # ilock will split the pandas dataframe
+df_test = df.iloc[2300:,:-1] # Split the dataframe into train and test
+train = df_train.to_numpy()
+test = df_test.to_numpy()
+
+print(f"training dimensions: {df_train.shape}")
+print(f"testing dimensions: {df_test.shape}") 
+
+def Prior_Bayes(train, true_train_class):
+    """
+    Input train and labled classes
+    Output Spam & NonSpam prior probability, mean, and standard deviation
+    
+    """
+    m = train.shape[0] # 2300
+    n = train.shape[1] # 57
+    spam,not_spam = [],[]
+    mean_spam = np.zeros((n,1))
+    mean_not_spam = np.zeros((n,1))
+    sd_spam = np.zeros((n,1))
+    sd_not_spam = np.zeros((n,1))
+    
+    for i, v in enumerate(train): # prior values of spam and not_spam
+        if(true_train_class[i] == 1): # class == 1 "Spam"
+            spam.append(v)
+            
+        if(true_train_class[i] == 0): # class == 0 "Not_spam"
+            not_spam.append(v)
+
+    spam = np.array(spam) # Convert to numpy arrays from a list
+    not_spam = np.array(not_spam)
+
+    # prior probabilities using count of values
+    prior_spam = len(spam)/m
+    prior_not_spam = len(not_spam)/m
+
+    # Find the mean and standard deviation of the appended true spam and non_spam values
+    mean_spam = np.mean(spam, axis=0)
+    mean_not_spam = np.mean(not_spam, axis=0)
+    sd_spam = np.std(spam, axis=0, dtype=np.float64)
+    sd_not_spam = np.std(not_spam, axis=0, dtype=np.float64)
+
+    # Replace zero's with a small value
+    sd_spam[sd_spam == 0] = 0.0001 
+    sd_not_spam[sd_not_spam == 0] = 0.0001
+
+    print(f"{spam.shape} Spam prior probability: {prior_spam}")
+    print(f"{not_spam.shape} Not_Spam prior probability: {prior_not_spam}")
+    
+    return (prior_spam, prior_not_spam, mean_spam, mean_not_spam, sd_spam, sd_not_spam)
+	
+def Naive_Bayes(test,train,true_test_class,true_train_class, K):
+"""
+Input train and test data along with labeled classes
+Output TP TN FP FN counts of spam emails
+
+"""
+m = test.shape[0]
+n = test.shape[1]
+True_Spam, False_Spam, True_not_spam, False_not_spam = 0,0,0,0
+spam_probability  = np.zeros((m,1))
+non_spam_probability = np.zeros((m,1))
+N_not_spam = np.zeros((n,1))
+N_spam = np.zeros((n,1))
+prior_spam, prior_not_spam, mean_spam, mean_not_spam, sd_spam, sd_not_spam = Prior_Bayes(train, true_train_class)
+
+for j in range(m): # 2301 Emails
+	true_class = true_test_class[j] # True test class of current email [1 {spam}, 0 {non_spam}]
+	for i in range(n): # 57 email features
+		
+		# Spam: N = P(X|C) where N=(x; mean; sd )
+		top = -1 * ( ((test[j][i] - mean_spam[i]) ** 2) / ((2 * sd_spam[i]) ** 2) )
+		bottom = 1 / (np.sqrt(2*math.pi) * sd_spam[i])
+		N_spam[i] = np.log(((bottom + K) * (np.exp(top))), where= (((bottom + K) * (np.exp(top + 1))) != 0)) 
+		if((((bottom + K) * (np.exp(top))) != 0) == 0): # check for divide by zero error
+			N_spam[i]= -math.inf
+			
+		# Non_Spam: N = P(X|C) where N=(x; mean; sd )
+		top = -1 * ( ((test[j][i] - mean_not_spam[i]) ** 2 ) /   ((2 * sd_not_spam[i]) ** 2) )
+		bottom = 1 / (np.sqrt(2*math.pi) * sd_not_spam[i])
+		N_not_spam[i] = np.log(((bottom + K) * (np.exp(top))), where= (((bottom + K) * (np.exp(top + 1))) != 0))
+		if((((bottom + K) * (np.exp(top))) != 0) == 0): # check for divide by zero error
+			N_not_spam[i]= -math.inf
+	
+	# If email has higher spam or non spam probabilities
+	# (57 Features probabilities for N_span & N_nonSpam) and fixed prior value
+	spam_probability = np.log(prior_spam) + np.sum(N_spam)
+	non_spam_probability = np.log(prior_not_spam) + np.sum(N_not_spam)
+	
+	if(true_class == 1): # Spam
+		if(spam_probability > non_spam_probability):
+			True_Spam += 1
+		if(spam_probability <= non_spam_probability):
+			False_Spam += 1
+	if(true_class == 0): # Not_Spam
+		if(non_spam_probability >= spam_probability):
+			True_not_spam += 1 
+		if(non_spam_probability < spam_probability):
+			False_not_spam += 1
+return (True_Spam, False_Spam, True_not_spam, False_not_spam)
+
+# K is laplase variation of smoothing, higher K, better the accuracy, up to 89 %
+#K = 2300*57 # 89% Accuracy
+K = 0 # No change
+True_Spam, False_Spam, True_not_spam, False_not_spam = Naive_Bayes(test, train, true_test_class,true_train_class, K)
+	
+confusion_matrix = np.zeros((2, 2))
+TP = True_Spam
+TN = True_not_spam
+FN = False_Spam
+FP = False_not_spam
+
+confusion_matrix[0][0] = TP
+confusion_matrix[0][1] = FP
+confusion_matrix[1][1] = TN
+confusion_matrix[1][0] = FN
+
+Precision = TP / (TP + FP)
+Recall = TP / (TP + FN)
+Accuracy = (TP + TN) / (TP + TN + FP + FN)
+
+print(f"Accuracy is : {Accuracy} ")
+print(f"Precision is : {Precision} ")
+print(f"Recall is : {Recall} ")
+confusion_matrix = pd.DataFrame(confusion_matrix, index = ["Actual Spam","Actual Non_Spam"], columns=['Predicted Spam', 'Predicted Non_Spam'] )
+confusion_matrix
