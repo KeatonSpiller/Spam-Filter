@@ -1,7 +1,7 @@
 # Spam-Filter
 Spam filtering using Naive Bayes
 
-* requirements
+* Requirements
 * Python version 3.10 or higher
 * Jupyter Notebook
 
